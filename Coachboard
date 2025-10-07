@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CoachBoard — расписание тренера (07:00–21:00)</title>
+  <style>
+    :root {
+      --bg: #0f172a;         /* slate-900 */
+      --panel: #111827;      /* gray-900 */
+      --muted: #475569;      /* slate-600 */
+      --text: #e5e7eb;       /* gray-200 */
+      --primary: #38bdf8;    /* sky-400 */
+      --accent: #a78bfa;     /* violet-400 */
+      --ok: #22c55e;         /* green-500 */
+      --warn: #f59e0b;       /* amber-500 */
+      --danger: #ef4444;     /* red-500 */
+      --grid-free: #1f2937;  /* gray-800 */
+      --grid-booked: #374151;/* gray-700 */
+      --grid-special: #312e81;/* indigo-900 */
+      --border: #334155;     /* slate-700 */
+      --chip: #0b1220;       
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial;
+      background: linear-gradient(180deg, #0b1020, #0f172a); color: var(--text);
+    }
+    .app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+    h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
+    .sub { color: var(--muted); font-size: 12px; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
+    .toolbar { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px; }
+    .toolbar .left { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .toolbar .right { display: flex; gap: 8px; flex-wrap: wrap; }
+    label { font-size: 12px; color: var(--muted); }
+    input, select, button { 
+      background: #0b1220; color: var(--text); border: 1px solid var(--border); border-radius: 10px; 
+      padding: 10px 12px; font-size: 14px; outline: none; transition: border .15s ease; 
+    }
+    input:focus, select:focus { border-color: var(--primary); }
+    button { cursor: pointer; }
+    .btn { background: #0b1220; }
+    .btn.primary { background: #071626; border-color: var(--primary); box-shadow: inset 0 0 0 1px rgba(56,189,248,.25); }
+    .btn.ghost { background: transparent; }
+    .legend { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+    .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+    .d-free { background: var(--grid-free); }
+    .d-booked { background: var(--grid-booked); }
+    .d-special { background: var(--grid-special); }
+
+    /* Grid */
+    .grid-wrap { overflow: auto; border-top-left-radius: 14px; border-top-right-radius: 14px; }
+    table.grid { width: 100%; border-collapse: separate; border-spacing: 0; }
+    table.grid th, table.grid td { border: 1px solid var(--border); }
+    table.grid th { position: sticky; top: 0; background: #0b1220; z-index: 2; }
+    table.grid th.time-col { left: 0; position: sticky; z-index: 3; width: 90px; background: #0b1220; }
+    table.grid td.time-col { position: sticky; left: 0; background: #0b1220; z-index: 1; width: 90px; }
+    table.grid th, table.grid td { padding: 8px; text-align: center; font-size: 13px; }
+    table.grid td.slot { min-width: 110px; height: 40px; background: var(--grid-free); cursor: pointer; }
+    table.grid td.slot.booked { background: var(--grid-booked); }
+    table.grid td.slot.special { background: var(--grid-special); }
+    table.grid td.slot:hover { outline: 1px dashed var(--primary); }
+    .slot-meta { font-size: 11px; color: #bcd; opacity: .9; }
+    .rate-badge { display: inline-block; margin-top: 4px; padding: 2px 6px; border-radius: 8px; background: var(--chip); border: 1px solid var(--border); font-size: 11px; }
+
+    .footer { padding: 10px 14px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
+
+    /* Modal */
+    dialog { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 14px; width: 420px; }
+    dialog::backdrop { background: rgba(0,0,0,.5); }
+    .modal-body { padding: 16px; display: grid; gap: 10px; }
+    .modal-actions { display: flex; justify-content: space-between; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--border); }
+
+    .rates { display: grid; gap: 10px; }
+    .rate-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; align-items: center; }
+    .chip { padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--chip); font-size: 12px; }
+
+    @media (max-width: 720px) {
+      .toolbar { grid-template-columns: 1fr; }
+      table.grid td.slot { min-width: 86px; }
+      dialog { width: 96vw; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>CoachBoard — расписание тренера</h1>
+      <div class="sub">07:00–21:00 • шаг 30 минут • локальное хранение (без авторизации)</div>
+    </header>
+
+    <section class="panel">
+      <div class="toolbar">
+        <div class="left">
+          <div>
+            <label>Дата</label><br/>
+            <input type="date" id="datePicker" />
+          </div>
+          <div>
+            <label>Базовая ставка (€ / час)</label><br/>
+            <input type="number" id="baseRate" min="0" step="1" placeholder="Напр. 40" />
+          </div>
+          <button class="btn" id="saveBase">Сохранить ставки</button>
+          <div class="legend">
+            <span class="dot d-free"></span> свободно
+            <span class="dot d-booked"></span> занято
+            <span class="dot d-special"></span> спецтариф
+          </div>
+        </div>
+        <div class="right">
+          <button class="btn" id="btnRates">Тарифы по диапазонам…</button>
+          <button class="btn ghost" id="btnResetDay" title="Очистить текущую дату">Очистить дату</button>
+          <button class="btn ghost" id="btnExport">Экспорт .json</button>
+          <input type="file" id="importFile" accept="application/json" style="display:none" />
+          <button class="btn ghost" id="btnImport">Импорт</button>
+        </div>
+      </div>
+
+      <div class="grid-wrap">
+        <table class="grid" id="grid"></table>
+      </div>
+
+      <div class="footer">
+        <div>Временная зона: Europe/Ljubljana</div>
+        <div id="summary">—</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Modal: slot actions -->
+  <dialog id="slotDialog">
+    <form method="dialog">
+      <div class="modal-body">
+        <div id="slotTitle" class="chip">—</div>
+        <div>
+          <label>Статус</label><br/>
+          <select id="slotStatus">
+            <option value="free">Свободно</option>
+            <option value="booked">Занято</option>
+          </select>
+        </div>
+        <div>
+          <label>Ставка для этого слота (€ / час)</label><br/>
+          <input type="number" id="slotRate" min="0" step="1" placeholder="авто по правилам" />
+          <div class="sub">Оставьте пустым, чтобы применялась базовая/диапазонная ставка.</div>
+        </div>
+        <div>
+          <label>Имя игрока (если занято)</label><br/>
+          <input type="text" id="slotPlayer" placeholder="Имя/комментарий" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn danger" value="delete" id="btnClearSlot">Очистить</button>
+        <div style="flex:1"></div>
+        <button class="btn" value="cancel">Отмена</button>
+        <button class="btn primary" value="ok">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal: rates config -->
+  <dialog id="ratesDialog">
+    <form method="dialog">
+      <div class="modal-body">
+        <div class="chip">Правила ставок по времени суток</div>
+        <div class="rates" id="ratesList"></div>
+        <button class="btn" id="addRateRow" type="button">Добавить правило</button>
+        <div class="sub">Правила применяются сверху вниз; первая подходящая запись побеждает.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" value="cancel">Закрыть</button>
+        <button class="btn primary" value="ok">Готово</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    /* ====== Utilities ====== */
+    const TZ = 'Europe/Ljubljana';
+    const DAY_START = 7;  // 07:00
+    const DAY_END = 21;   // 21:00
+    const STEP_MIN = 30;  // 30-minute slots
+
+    const pad = n => String(n).padStart(2,'0');
+    const range = (a,b,step=1)=> Array.from({length: Math.ceil((b-a)/step)}, (_,i)=> a+i*step);
+
+    function toKey(date) {
+      const d = new Date(date);
+      const y = d.getFullYear();
+      const m = pad(d.getMonth()+1);
+      const day = pad(d.getDate());
+      return `${y}-${m}-${day}`;
+    }
+
+    function loadState() {
+      try { return JSON.parse(localStorage.getItem('coachboard-state')||'{}'); } catch(e){ return {}; }
+    }
+    function saveState(state) {
+      localStorage.setItem('coachboard-state', JSON.stringify(state));
+    }
+
+    function defaultState() {
+      return { baseRate: 40, rateRules: [], days: {} };
+    }
+
+    function getState(){
+      const s = { ...defaultState(), ...loadState() };
+      return s;
+    }
+
+    /* ====== Business rules ====== */
+    function computeRateForTime(state, hour, minute){
+      // rules: first matching rule wins; rule = {fromH, toH, rate}
+      for (const r of state.rateRules){
+        if ((hour > r.fromH || (hour === r.fromH && minute >= (r.fromM||0))) &&
+            (hour < r.toH   || (hour === r.toH   && minute <  (r.toM||0)))){
+          return r.rate;
+        }
+      }
+      return state.baseRate;
+    }
+
+    function slotLabel(h, m){ return `${pad(h)}:${pad(m)}`; }
+
+    /* ====== Rendering grid ====== */
+    const grid = document.getElementById('grid');
+    const datePicker = document.getElementById('datePicker');
+    const baseRateInput = document.getElementById('baseRate');
+    const saveBaseBtn = document.getElementById('saveBase');
+    const summaryEl = document.getElementById('summary');
+
+    const slotDialog = document.getElementById('slotDialog');
+    const slotTitle = document.getElementById('slotTitle');
+    const slotStatus = document.getElementById('slotStatus');
+    const slotRate = document.getElementById('slotRate');
+    const slotPlayer = document.getElementById('slotPlayer');
+
+    const ratesDialog = document.getElementById('ratesDialog');
+    const ratesList = document.getElementById('ratesList');
+    const addRateRowBtn = document.getElementById('addRateRow');
+
+    const btnRates = document.getElementById('btnRates');
+    const btnResetDay = document.getElementById('btnResetDay');
+    const btnExport = document.getElementById('btnExport');
+    const btnImport = document.getElementById('btnImport');
+    const importFile = document.getElementById('importFile');
+
+    let state = getState();
+
+    function ensureDay(dateKey){
+      if (!state.days[dateKey]){
+        const slots = {};
+        for (let h=DAY_START; h<DAY_END; h++){
+          for (let m=0; m<60; m+=STEP_MIN){
+            const key = `${pad(h)}:${pad(m)}`;
+            slots[key] = { status: 'free', rate: null, player: '' };
+          }
+        }
+        state.days[dateKey] = { slots };
+      }
+    }
+
+    function render(){
+      // Header row: time columns
+      const times = [];
+      for (let h=DAY_START; h<DAY_END; h++){
+        for (let m=0; m<60; m+=STEP_MIN){ times.push([h,m]); }
+      }
+
+      let html = '<thead><tr><th class="time-col">Время</th>' + times.map(([h,m]) => `<th>${slotLabel(h,m)}</th>`).join('') + '</tr></thead>';
+
+      const dateKey = toKey(datePicker.value);
+      ensureDay(dateKey);
+      const day = state.days[dateKey];
+
+      html += '<tbody>';
+      html += '<tr>';
+      html += `<td class="time-col">${dateKey}</td>`;
+      html += times.map(([h,m]) => {
+        const key = slotLabel(h,m);
+        const s = day.slots[key];
+        const effectiveRate = s.rate != null && s.rate !== '' ? s.rate : computeRateForTime(state, h, m);
+        const cls = s.status === 'booked' ? 'booked' : (s.rate!=null && s.rate!=='' && Number(s.rate)!==Number(state.baseRate) ? 'special' : (rateDiffersFromRules(h,m,s.rate))) ? 'special' : 'free';
+        return `<td class="slot ${cls}" data-time="${key}" title="${key}">
+                  <div class="slot-meta">${s.status==='booked' ? 'занято' : 'свободно'}</div>
+                  <div class="rate-badge">€${effectiveRate}/ч</div>
+                </td>`;
+      }).join('');
+      html += '</tr>';
+      html += '</tbody>';
+
+      grid.innerHTML = html;
+
+      // Bind slot clicks
+      grid.querySelectorAll('td.slot').forEach(td => {
+        td.addEventListener('click', () => openSlot(td.dataset.time));
+      });
+
+      baseRateInput.value = state.baseRate;
+      updateSummary();
+    }
+
+    function rateDiffersFromRules(h,m,explicit){
+      if (explicit!=null && explicit!=='') return true;
+      // If rules exist and differ from base at this time — highlight as special
+      const ruleRate = computeRateForTime(state, h, m);
+      return state.rateRules.length>0 && Number(ruleRate)!==Number(state.baseRate);
+    }
+
+    function openSlot(timeKey){
+      const dateKey = toKey(datePicker.value);
+      const s = state.days[dateKey].slots[timeKey];
+      slotTitle.textContent = `${dateKey} • ${timeKey}`;
+      slotStatus.value = s.status;
+      slotRate.value = s.rate ?? '';
+      slotPlayer.value = s.player || '';
+      slotDialog.returnValue = '';
+      slotDialog.showModal();
+
+      slotDialog.onclose = () => {
+        if (slotDialog.returnValue === 'ok'){
+          s.status = slotStatus.value;
+          s.rate = slotRate.value === '' ? null : Number(slotRate.value);
+          s.player = slotPlayer.value || '';
+          saveState(state);
+          render();
+        } else if (slotDialog.returnValue === 'delete'){
+          s.status = 'free'; s.rate = null; s.player = '';
+          saveState(state); render();
+        }
+      };
+    }
+
+    function updateSummary(){
+      const dateKey = toKey(datePicker.value);
+      const day = state.days[dateKey];
+      let free=0, booked=0; let revenue=0;
+      for (const [time, s] of Object.entries(day.slots)){
+        const [h,m] = time.split(':').map(Number);
+        const rate = s.rate!=null && s.rate!=='' ? Number(s.rate) : computeRateForTime(state, h, m);
+        if (s.status==='booked'){ booked++; revenue += rate * (STEP_MIN/60); } else { free++; }
+      }
+      summaryEl.textContent = `Свободно: ${free} слотов • Занято: ${booked} • Теоретическая выручка за день: €${revenue.toFixed(2)}`;
+    }
+
+    /* ====== Rates dialog ====== */
+    function renderRateRules(){
+      ratesList.innerHTML = '';
+      state.rateRules.forEach((r, idx) => addRuleRow(r, idx));
+    }
+
+    function addRuleRow(rule={fromH:7, fromM:0, toH:12, toM:0, rate:50}, idx=state.rateRules.length){
+      const row = document.createElement('div');
+      row.className = 'rate-row';
+      row.innerHTML = `
+        <span>
+          <label>С</label>
+          <input type="number" min="0" max="23" step="1" value="${rule.fromH}" class="fromH"> :
+          <input type="number" min="0" max="59" step="15" value="${rule.fromM}" class="fromM">
+        </span>
+        <span>
+          <label>До</label>
+          <input type="number" min="0" max="23" step="1" value="${rule.toH}" class="toH"> :
+          <input type="number" min="0" max="59" step="15" value="${rule.toM}" class="toM">
+        </span>
+        <span>
+          <label>€ / час</label>
+          <input type="number" min="0" step="1" value="${rule.rate}" class="rate">
+        </span>
+        <button type="button" class="btn" title="Удалить">✕</button>
+      `;
+      const delBtn = row.querySelector('button');
+      delBtn.addEventListener('click', ()=>{
+        state.rateRules.splice(idx,1); saveState(state); renderRateRules(); render();
+      });
+      ['fromH','fromM','toH','toM','rate'].forEach(k => {
+        row.querySelector('.'+k).addEventListener('input', ()=>{
+          const r = state.rateRules[idx];
+          r.fromH = Number(row.querySelector('.fromH').value);
+          r.fromM = Number(row.querySelector('.fromM').value);
+          r.toH   = Number(row.querySelector('.toH').value);
+          r.toM   = Number(row.querySelector('.toM').value);
+          r.rate  = Number(row.querySelector('.rate').value);
+          saveState(state); render();
+        });
+      });
+      ratesList.appendChild(row);
+    }
+
+    /* ====== Import/Export ====== */
+    btnExport.addEventListener('click', ()=>{
+      const data = JSON.stringify(state, null, 2);
+      const blob = new Blob([data], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'coachboard-data.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    btnImport.addEventListener('click', ()=> importFile.click());
+    importFile.addEventListener('change', (e)=>{
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{ try { state = { ...defaultState(), ...JSON.parse(reader.result) }; saveState(state); render(); } catch(err){ alert('Неверный файл'); } };
+      reader.readAsText(file);
+      importFile.value = '';
+    });
+
+    /* ====== Event bindings ====== */
+    document.getElementById('btnRates').addEventListener('click', ()=>{ renderRateRules(); ratesDialog.showModal(); });
+    document.getElementById('addRateRow').addEventListener('click', ()=>{ state.rateRules.push({fromH:7,fromM:0,toH:12,toM:0,rate:50}); saveState(state); renderRateRules(); render(); });
+
+    document.getElementById('btnResetDay').addEventListener('click', ()=>{
+      const dk = toKey(datePicker.value);
+      if (confirm('Очистить все слоты для '+dk+'?')){ delete state.days[dk]; saveState(state); ensureDay(dk); render(); }
+    });
+
+    saveBaseBtn.addEventListener('click', ()=>{ state.baseRate = Number(baseRateInput.value||0); saveState(state); render(); });
+
+    // Clicking outside dialogs closes on Esc — default; ensure inputs don't submit form unexpectedly
+
+    /* ====== Init ====== */
+    function init(){
+      const today = new Date();
+      datePicker.valueAsDate = today;
+      ensureDay(toKey(today));
+      render();
+    }
+    init();
+  </script>
+</body>
+</html>
